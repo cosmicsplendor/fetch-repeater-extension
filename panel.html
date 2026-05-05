@@ -2,15 +2,35 @@
 <html>
 <head>
   <style>
-    body { font-family: monospace; background: #242424; color: #fff; margin: 0; }
-    .request-item { padding: 8px; border-bottom: 1px solid #444; cursor: pointer; }
-    .request-item:hover { background: #333; }
-    .method { font-weight: bold; color: #4CAF50; margin-right: 10px;}
-    .toast { display: none; position: fixed; bottom: 20px; right: 20px; background: #4CAF50; padding: 10px; border-radius: 5px; }
+    body { font-family: monospace; margin: 0; color: #333; background: #fff; }
+    
+    /* Sticky header for the search bar */
+    #header { position: fixed; top: 0; left: 0; right: 0; background: #f8f9fa; padding: 8px; border-bottom: 1px solid #ddd; z-index: 10; }
+    #filter { width: 100%; padding: 6px; box-sizing: border-box; font-family: monospace; border: 1px solid #ccc; border-radius: 4px; outline: none; }
+    #filter:focus { border-color: #0066cc; }
+
+    /* Push the list down so it doesn't hide under the sticky header */
+    #request-list { margin-top: 50px; padding-bottom: 20px; }
+    
+    /* Request items styling */
+    .request-item { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; word-break: break-all; }
+    .request-item:hover { background: #f0f4f8; }
+    .method { font-weight: bold; color: #0066cc; margin-right: 10px; display: inline-block; width: 45px; }
+    
+    /* Utility classes */
+    .hidden { display: none !important; }
+    .toast { display: none; position: fixed; bottom: 20px; right: 20px; background: #10b981; color: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
   </style>
 </head>
 <body>
-  <div id="request-list">Waiting for network requests...</div>
+  <div id="header">
+    <input type="text" id="filter" placeholder="Filter by URL or Method (e.g. POST api/user)..." autocomplete="off" />
+  </div>
+  
+  <div id="request-list">
+    <div style="padding: 8px; color: #888;">Waiting for network requests...</div>
+  </div>
+  
   <div id="toast" class="toast">Copied to clipboard!</div>
   
   <script src="panel.js"></script>

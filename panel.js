@@ -1,18 +1,49 @@
 const requestList = document.getElementById('request-list');
+const filterInput = document.getElementById('filter');
 let isFirstRequest = true;
 
-// Listen to all network requests
+// 1. Listen to typing in the filter box
+filterInput.addEventListener('input', (e) => {
+  const searchTerm = e.target.value.toLowerCase();
+  const items = document.querySelectorAll('.request-item');
+  
+  items.forEach(item => {
+    // We will store the searchable text in a data attribute
+    const text = item.getAttribute('data-search').toLowerCase();
+    if (text.includes(searchTerm)) {
+      item.classList.remove('hidden');
+    } else {
+      item.classList.add('hidden');
+    }
+  });
+});
+
+// 2. Listen to network requests
 chrome.devtools.network.onRequestFinished.addListener((request) => {
   if (isFirstRequest) {
     requestList.innerHTML = ''; // Clear "waiting" text
     isFirstRequest = false;
   }
 
+  const url = request.request.url;
+  const method = request.request.method;
+
   // Create UI element for the request
   const div = document.createElement('div');
   div.className = 'request-item';
-  div.innerHTML = `<span class="method">${request.request.method}</span> ${request.request.url.substring(0, 100)}...`;
   
+  // Store the raw text in an attribute to make filtering fast and easy
+  div.setAttribute('data-search', `${method} ${url}`);
+  
+  // Display the full URL (no truncation)
+  div.innerHTML = `<span class="method">${method}</span> ${url}`;
+  
+  // If the user is currently typing a filter, apply it immediately to incoming requests
+  const currentFilter = filterInput.value.toLowerCase();
+  if (currentFilter && !`${method} ${url}`.toLowerCase().includes(currentFilter)) {
+    div.classList.add('hidden');
+  }
+
   // When clicked, format and copy
   div.addEventListener('click', () => {
     const code = generateFetchCode(request.request);
@@ -22,20 +53,18 @@ chrome.devtools.network.onRequestFinished.addListener((request) => {
   requestList.prepend(div); // Add newest to the top
 });
 
+// 3. Generate the fetch code (Unchanged)
 function generateFetchCode(req) {
   const url = req.url;
   const method = req.method;
   
-  // 1. Format Headers
   const headersObj = {};
   req.headers.forEach(h => {
-    // Ignore Chrome's pseudo-headers (they start with ':')
     if (!h.name.startsWith(':')) {
       headersObj[h.name] = h.value;
     }
   });
 
-  // 2. Format Body (Dynamically detect JSON, Form-Data, or String)
   let bodyStr = 'null';
   if (req.postData && req.postData.text) {
     const mimeType = req.postData.mimeType || '';
@@ -43,7 +72,6 @@ function generateFetchCode(req) {
 
     if (mimeType.includes('application/json')) {
       try {
-        // Parse and stringify to get a clean JS object representation
         const jsonObj = JSON.parse(rawText);
         bodyStr = `JSON.stringify(\n${JSON.stringify(jsonObj, null, 2)}\n)`;
       } catch (e) {
@@ -56,7 +84,6 @@ function generateFetchCode(req) {
     }
   }
 
-  // 3. Construct the final string exactly as requested
   const isBodyAllowed = !['GET', 'HEAD'].includes(method);
   
   return `const url = "${url}";
@@ -81,8 +108,8 @@ fetch(url, {
 .catch(err => console.error("Fetch Error:", err));`;
 }
 
+// 4. Copy to clipboard logic (Unchanged)
 function copyToClipboard(text) {
-  // Use the Clipboard API
   navigator.clipboard.writeText(text).then(() => {
     const toast = document.getElementById('toast');
     toast.style.display = 'block';
