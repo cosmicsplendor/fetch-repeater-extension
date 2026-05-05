@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: monospace; background: #242424; color: #fff; margin: 0; }
+    .request-item { padding: 8px; border-bottom: 1px solid #444; cursor: pointer; }
+    .request-item:hover { background: #333; }
+    .method { font-weight: bold; color: #4CAF50; margin-right: 10px;}
+    .toast { display: none; position: fixed; bottom: 20px; right: 20px; background: #4CAF50; padding: 10px; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <div id="request-list">Waiting for network requests...</div>
+  <div id="toast" class="toast">Copied to clipboard!</div>
+  
+  <script src="panel.js"></script>
+</body>
+</html>

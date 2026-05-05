@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Fetch Repeater",
+  "version": "1.0",
+  "description": "Copies network requests as beautifully formatted, editable fetch scripts.",
+  "devtools_page": "devtools.html",
+  "permissions": [
+    "clipboardWrite"
+  ]
+}
