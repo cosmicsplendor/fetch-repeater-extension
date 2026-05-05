@@ -111,9 +111,9 @@ chrome.devtools.network.onRequestFinished.addListener((request) => {
   div.setAttribute('data-size', size);
   div.setAttribute('data-res', ''); 
   
-  const sClass = status.startsWith('5') ? 's5xx' : status.startsWith('4') ? 's4xx' : 's2xx';
-  div.innerHTML = `<span class="status-lbl ${sClass}">${status}</span><span class="method">${method}</span> ${url}`;
-  
+  const sClass = status.startsWith('5') ? 's5xx' : status.startsWith('4') ? 's4xx' : status.startsWith('3') ? 's3xx' : 's2xx';
+  div.innerHTML = `<span class="status-lbl ${sClass}">${status}</span> <span class="method">${method}</span> ${url}`;
+
   // Apply filter immediately
   div.classList.toggle('hidden', !parseAndFilter(filterInput.value, div));
 
