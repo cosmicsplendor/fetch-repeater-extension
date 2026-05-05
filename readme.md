@@ -9,6 +9,34 @@ A lightweight, native DevTools extension that acts as a localized alternative to
 * **Syntax Highlighting:** VS Code-style colorization built-in natively.
 * **Response Viewer:** Inspect the status, formatted headers, and formatted JSON response bodies of your requests.
 * **Auto-Copy:** Clicking any request immediately writes the executable code to your clipboard.
+* **Smart Filter Engine:** A powerful query language to filter requests in real-time (see below).
+
+## Filter Engine
+
+The search bar supports a simple but powerful query language. Tokens are separated by spaces and all conditions are AND'd together.
+
+| Token | Description | Example |
+|---|---|---|
+| Plain text | Matches against method + URL | `api/users` |
+| `method=` | Filter by HTTP method | `method=POST` |
+| `method=` (multi) | OR across methods | `method=POST,PUT` |
+| `status=` | Exact status code | `status=500` |
+| `status=` (wildcard) | Match a status class | `status=4xx` |
+| `url=` | Partial URL match | `url=api/users` |
+| `url!=` | Exclude URLs containing value | `url!=static` |
+| `res=` | Search response body text | `res=admin` |
+| `res!=` | Exclude by response body text | `res!=tracking` |
+| `size>` | Response larger than N bytes | `size>10000` |
+| `size<` | Response smaller than N bytes | `size<100` |
+| `size>=` `size<=` | Size with inclusive bounds | `size>=500` |
+
+**Example combining tokens:**
+```
+method=POST status=4xx url=api res=token
+```
+Finds all POST requests to URLs containing `api`, with a 4xx status, whose response body contains the word `token`.
+
+> **Note:** `res=` filtering works asynchronously. Response bodies are fetched in the background, so the filter is re-applied automatically once the body is available.
 
 ## Installation Instructions
 
