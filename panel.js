@@ -8,7 +8,6 @@ filterInput.addEventListener('input', (e) => {
   const items = document.querySelectorAll('.request-item');
   
   items.forEach(item => {
-    // We will store the searchable text in a data attribute
     const text = item.getAttribute('data-search').toLowerCase();
     if (text.includes(searchTerm)) {
       item.classList.remove('hidden');
@@ -21,43 +20,37 @@ filterInput.addEventListener('input', (e) => {
 // 2. Listen to network requests
 chrome.devtools.network.onRequestFinished.addListener((request) => {
   if (isFirstRequest) {
-    requestList.innerHTML = ''; // Clear "waiting" text
+    requestList.innerHTML = ''; 
     isFirstRequest = false;
   }
 
   const url = request.request.url;
   const method = request.request.method;
 
-  // Create UI element for the request
   const div = document.createElement('div');
   div.className = 'request-item';
-  
-  // Store the raw text in an attribute to make filtering fast and easy
   div.setAttribute('data-search', `${method} ${url}`);
-  
-  // Display the full URL (no truncation)
   div.innerHTML = `<span class="method">${method}</span> ${url}`;
   
-  // If the user is currently typing a filter, apply it immediately to incoming requests
   const currentFilter = filterInput.value.toLowerCase();
   if (currentFilter && !`${method} ${url}`.toLowerCase().includes(currentFilter)) {
     div.classList.add('hidden');
   }
 
-  // When clicked, format and copy
   div.addEventListener('click', () => {
     const code = generateFetchCode(request.request);
     copyToClipboard(code);
   });
 
-  requestList.prepend(div); // Add newest to the top
+  requestList.prepend(div);
 });
 
-// 3. Generate the fetch code (Unchanged)
+// 3. Generate the intelligently parsed fetch code
 function generateFetchCode(req) {
   const url = req.url;
   const method = req.method;
   
+  // Format Headers
   const headersObj = {};
   req.headers.forEach(h => {
     if (!h.name.startsWith(':')) {
@@ -65,33 +58,59 @@ function generateFetchCode(req) {
     }
   });
 
-  let bodyStr = 'null';
-  if (req.postData && req.postData.text) {
-    const mimeType = req.postData.mimeType || '';
-    const rawText = req.postData.text;
+  // Intelligent Body Parsing
+  const isBodyAllowed = !['GET', 'HEAD'].includes(method);
+  let parsedDataObject = null;
+  let bodyAssignment = "null";
+  let dataType = "none"; 
 
-    if (mimeType.includes('application/json')) {
-      try {
-        const jsonObj = JSON.parse(rawText);
-        bodyStr = `JSON.stringify(\n${JSON.stringify(jsonObj, null, 2)}\n)`;
-      } catch (e) {
-        bodyStr = `\`${rawText}\``;
+  if (isBodyAllowed && req.postData && req.postData.text) {
+    const rawText = req.postData.text;
+    dataType = "string"; // fallback
+
+    // Attempt 1: Is it JSON?
+    try {
+      const maybeJson = JSON.parse(rawText);
+      // Make sure it's actually an object/array, not just a primitive like `123`
+      if (typeof maybeJson === 'object' && maybeJson !== null) {
+        parsedDataObject = maybeJson;
+        dataType = "json";
       }
-    } else if (mimeType.includes('application/x-www-form-urlencoded')) {
-      bodyStr = `new URLSearchParams(\`${rawText}\`)`;
+    } catch (e) {
+      // Attempt 2: Is it Form-Data?
+      const mimeType = req.postData.mimeType || '';
+      if (mimeType.includes('application/x-www-form-urlencoded')) {
+        const searchParams = new URLSearchParams(rawText);
+        // Convert URLSearchParams to a standard JS object
+        parsedDataObject = Object.fromEntries(searchParams.entries());
+        dataType = "form";
+      }
+    }
+
+    // Determine how the body should be assigned based on what we found
+    if (dataType === "json") {
+      bodyAssignment = "JSON.stringify(data)";
+    } else if (dataType === "form") {
+      // new URLSearchParams() natively accepts a JS object in Node/modern browsers!
+      bodyAssignment = "new URLSearchParams(data)";
     } else {
-      bodyStr = `\`${rawText}\``;
+      bodyAssignment = `\`${rawText}\``;
     }
   }
 
-  const isBodyAllowed = !['GET', 'HEAD'].includes(method);
-  
-  return `const url = "${url}";
-const method = "${method}";
-const headers = ${JSON.stringify(headersObj, null, 2)};
-const body = ${isBodyAllowed ? bodyStr : 'null'};
+  // Build the script string cleanly piece by piece
+  let script = `const url = "${url}";\n`;
+  script += `const method = "${method}";\n`;
+  script += `const headers = ${JSON.stringify(headersObj, null, 2)};\n`;
 
-fetch(url, {
+  // Inject the intermediate `data` object if we successfully parsed one
+  if (parsedDataObject) {
+    script += `\nconst data = ${JSON.stringify(parsedDataObject, null, 2)};\n`;
+  }
+
+  script += `\nconst body = ${bodyAssignment};\n\n`;
+
+  script += `fetch(url, {
   method,
   headers,
   ${isBodyAllowed ? 'body,' : ''}
@@ -106,9 +125,11 @@ fetch(url, {
   }
 })
 .catch(err => console.error("Fetch Error:", err));`;
+
+  return script;
 }
 
-// 4. Copy to clipboard logic (Unchanged)
+// 4. Copy to clipboard logic
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text).then(() => {
     const toast = document.getElementById('toast');
