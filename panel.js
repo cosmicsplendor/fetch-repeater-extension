@@ -2,18 +2,27 @@ const requestList = document.getElementById('request-list');
 const filterInput = document.getElementById('filter');
 const emptyState = document.getElementById('empty-state');
 const detailsPane = document.getElementById('details');
+const sidebar = document.getElementById('sidebar');
+const resizer = document.getElementById('resizer');
 
 let isFirstRequest = true;
 let currentCodeToCopy = "";
 
+// --- Resizer / Panel Coverage Logic ---
+let isResizing = false;
+resizer.addEventListener('mousedown', () => { isResizing = true; resizer.classList.add('active'); document.body.style.cursor = 'col-resize'; });
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const newWidth = (e.clientX / window.innerWidth) * 100;
+  if (newWidth > 15 && newWidth < 85) sidebar.style.width = `${newWidth}%`;
+});
+document.addEventListener('mouseup', () => { isResizing = false; resizer.classList.remove('active'); document.body.style.cursor = 'default'; });
+
 // --- Tab Switching Logic ---
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', (e) => {
-    // Remove active class from all tabs
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    
-    // Add active class to clicked tab
     e.target.classList.add('active');
     document.getElementById(e.target.getAttribute('data-target')).classList.add('active');
   });
@@ -29,45 +38,34 @@ filterInput.addEventListener('input', (e) => {
 });
 
 // --- Manual Copy Button ---
-document.getElementById('copy-btn').addEventListener('click', () => {
-  copyToClipboard(currentCodeToCopy);
-});
+document.getElementById('copy-btn').addEventListener('click', () => { copyToClipboard(currentCodeToCopy); });
 
 // --- Network Listener ---
 chrome.devtools.network.onRequestFinished.addListener((request) => {
-  if (isFirstRequest) {
-    requestList.innerHTML = ''; 
-    isFirstRequest = false;
-  }
+  if (isFirstRequest) { requestList.innerHTML = ''; isFirstRequest = false; }
 
   const url = request.request.url;
   const method = request.request.method;
-
   const div = document.createElement('div');
   div.className = 'request-item';
   div.setAttribute('data-search', `${method} ${url}`);
   div.innerHTML = `<span class="method">${method}</span> ${url}`;
   
-  const currentFilter = filterInput.value.toLowerCase();
-  if (currentFilter && !`${method} ${url}`.toLowerCase().includes(currentFilter)) {
+  if (filterInput.value && !`${method} ${url}`.toLowerCase().includes(filterInput.value.toLowerCase())) {
     div.classList.add('hidden');
   }
 
   div.addEventListener('click', () => {
-    // 1. UI Selection highlight
     document.querySelectorAll('.request-item').forEach(el => el.classList.remove('selected'));
     div.classList.add('selected');
-
-    // 2. Show Details Pane
     emptyState.style.display = 'none';
     detailsPane.style.display = 'flex';
 
-    // 3. Generate Request Code & auto-copy
     currentCodeToCopy = generateFetchCode(request.request);
-    document.getElementById('code-block').innerText = currentCodeToCopy;
+    
+    // Apply Syntax Highlighting to UI
+    document.getElementById('code-block').innerHTML = highlightJS(currentCodeToCopy);
     copyToClipboard(currentCodeToCopy);
-
-    // 4. Populate Response Tab
     populateResponseTab(request.response, request);
   });
 
@@ -76,47 +74,36 @@ chrome.devtools.network.onRequestFinished.addListener((request) => {
 
 // --- Populate Response Details ---
 function populateResponseTab(response, fullRequestObject) {
-  // Status Badge
   const statusEl = document.getElementById('res-status');
   statusEl.innerText = `${response.status} ${response.statusText}`;
-  statusEl.className = 'status-badge ' + 
-    (response.status >= 500 ? 'status-500' : 
-     response.status >= 400 ? 'status-400' : 'status-200');
+  statusEl.className = 'status-badge ' + (response.status >= 500 ? 'status-500' : response.status >= 400 ? 'status-400' : 'status-200');
 
-  // Headers
   const headersObj = {};
   response.headers.forEach(h => headersObj[h.name] = h.value);
-  document.getElementById('res-headers').innerText = JSON.stringify(headersObj, null, 2);
+  document.getElementById('res-headers').innerHTML = highlightJSON(headersObj);
 
-  // Body - We must fetch this asynchronously
   const bodyEl = document.getElementById('res-body');
   bodyEl.innerText = "Loading body...";
   
   fullRequestObject.getContent((content, encoding) => {
-    if (!content) {
-      bodyEl.innerText = "(No response body)";
-      return;
-    }
-    
-    // Try to beautifully format JSON if possible
+    if (!content) { bodyEl.innerText = "(No response body)"; return; }
     try {
       const json = JSON.parse(content);
-      bodyEl.innerText = JSON.stringify(json, null, 2);
+      bodyEl.innerHTML = highlightJSON(json);
     } catch(e) {
-      bodyEl.innerText = content; // Fallback to raw text
+      // Not JSON, escape HTML and show raw text
+      bodyEl.innerHTML = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
   });
 }
 
-// --- Intelligent Parse Fetch Code (Unchanged) ---
+// --- Fetch Code Generator ---
 function generateFetchCode(req) {
   const url = req.url;
   const method = req.method;
   const headersObj = {};
   
-  req.headers.forEach(h => {
-    if (!h.name.startsWith(':')) headersObj[h.name] = h.value;
-  });
+  req.headers.forEach(h => { if (!h.name.startsWith(':')) headersObj[h.name] = h.value; });
 
   const isBodyAllowed = !['GET', 'HEAD'].includes(method);
   let parsedDataObject = null;
@@ -155,11 +142,49 @@ function generateFetchCode(req) {
   return script;
 }
 
-// --- Copy to clipboard ---
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text).then(() => {
     const toast = document.getElementById('toast');
     toast.style.display = 'block';
     setTimeout(() => { toast.style.display = 'none'; }, 2000);
+  });
+}
+
+// --- Custom Syntax Highlighters ---
+function highlightJS(code) {
+  let html = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  
+  // Highlight Strings
+  html = html.replace(/(["'`])(?:(?=(\\?))\2.)*?\1/g, '<span class="hl-string">$&</span>');
+  
+  // Highlight Keywords
+  ['const ', 'new ', 'try ', 'catch ', 'let '].forEach(kw => {
+    html = html.replace(new RegExp(`\\b${kw}`, 'g'), `<span class="hl-keyword">${kw}</span>`);
+  });
+  
+  // Highlight Functions
+  ['fetch', 'then', 'catch', 'stringify', 'parse', 'log', 'error'].forEach(m => {
+     html = html.replace(new RegExp(`\\b${m}\\b`, 'g'), `<span class="hl-function">${m}</span>`);
+  });
+
+  // Highlight Built-in Objects
+  ['JSON', 'console', 'URLSearchParams'].forEach(b => {
+     html = html.replace(new RegExp(`\\b${b}\\b`, 'g'), `<span class="hl-object">${b}</span>`);
+  });
+
+  return html;
+}
+
+function highlightJSON(obj) {
+  let json = JSON.stringify(obj, null, 2);
+  json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+      let cls = 'hl-number';
+      if (/^"/.test(match)) {
+          if (/:$/.test(match)) cls = 'hl-key';
+          else cls = 'hl-string';
+      } else if (/true|false/.test(match)) cls = 'hl-boolean';
+      else if (/null/.test(match)) cls = 'hl-keyword';
+      return `<span class="${cls}">${match}</span>`;
   });
 }
